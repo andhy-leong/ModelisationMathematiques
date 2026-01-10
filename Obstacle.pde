@@ -12,9 +12,7 @@ class Obstacle {
   void setPosition(float x, float y) { pos.set(x, y); }
 
   void display() {
-    fill(0); 
-    noStroke();
-    rectMode(CENTER);
+    fill(0); noStroke(); rectMode(CENTER);
     if (type == 0) ellipse(pos.x, pos.y, r*2, r*2);
     else if (type == 1) rect(pos.x, pos.y, r*2, r*2);
     else if (type == 2) rect(pos.x, pos.y, r*4, r*2);
