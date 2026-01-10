@@ -1,9 +1,9 @@
 // Agent.pde
 class Agent {
   PVector pos, vel, acc;
-  float r = 8.0;
-  float maxSpeed = 3.0;
-  float maxForce = 0.2;
+  float r = 8.0; 
+  float maxSpeed = 2.5; // Vitesse légèrement réduite pour plus de réalisme
+  float maxForce = 0.15; // Moins de nervosité dans les virages
 
   Agent(float x, float y) {
     pos = new PVector(x, y);
@@ -17,9 +17,10 @@ class Agent {
     PVector forceObs = avoidObstacles(obstacles);
     PVector forceWall = avoidWalls(room);
     
+    // Équilibrage des forces : la sortie reste l'objectif principal
     forceExit.mult(1.0);
-    forceSep.mult(1.5); 
-    forceObs.mult(6.0); // Augmenté pour éviter les collisions proches
+    forceSep.mult(2.0); 
+    forceObs.mult(5.0); 
     forceWall.mult(5.0);
     
     applyForce(forceExit);
@@ -56,6 +57,7 @@ class Agent {
     return steer;
   }
 
+  // Séparation : les humains essaient de ne pas se rentrer dedans
   PVector separate(ArrayList<Agent> agents) {
     float desiredSeparation = r * 2.2;
     PVector sum = new PVector();
@@ -79,22 +81,45 @@ class Agent {
     return new PVector(0, 0);
   }
 
-  PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
+  // --- LOGIQUE DE CONTOURNEMENT SANS REBOND ---
+PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
     PVector totalSteer = new PVector(0,0);
+    
     for(Obstacle obs : obstacles) {
-      float d = PVector.dist(pos, obs.pos);
-      float obstacleSize = obs.r;
-      if (obs.type == 2) obstacleSize *= 1.8; // Rectangle
+      PVector toObstacle = PVector.sub(obs.pos, pos);
+      float d = toObstacle.mag();
       
-      float detectionRange = obstacleSize + r + 8;
+      // --- AJOUT : Vérification si l'obstacle est DERRIÈRE l'agent ---
+      // Si l'angle entre notre direction (vel) et l'obstacle est trop grand, 
+      // on l'ignore car on l'a déjà dépassé.
+      if (vel.mag() > 0) {
+        float angle = PVector.angleBetween(vel, toObstacle);
+        if (angle > PI/2) continue; // On ignore ce qui est derrière nous
+      }
+
+      float obstacleRadius = obs.r;
+      if (obs.type == 2) obstacleRadius = obs.r * 1.5; 
       
-      if (d < detectionRange) {
-        PVector flee = PVector.sub(pos, obs.pos);
-        flee.normalize();
-        float strength = map(d, obstacleSize + r, detectionRange, maxSpeed * 2, 0);
-        flee.mult(strength);
-        PVector steer = PVector.sub(flee, vel);
+      float buffer = 15; 
+      
+      if (d < obstacleRadius + r + buffer) {
+        // Calcul du vecteur perpendiculaire pour glisser
+        PVector lateral = new PVector(-toObstacle.y, toObstacle.x);
+        
+        // On choisit le côté qui nous rapproche de la sortie (à gauche)
+        PVector goal = new PVector(-1, 0); 
+        if (PVector.angleBetween(lateral, goal) > PI/2) {
+          lateral.mult(-1);
+        }
+        
+        lateral.setMag(maxSpeed);
+        PVector steer = PVector.sub(lateral, vel);
         steer.limit(maxForce * 2);
+        
+        // Poids de la force basé sur la proximité
+        float weight = map(d, obstacleRadius + r, obstacleRadius + r + buffer, 1.2, 0);
+        steer.mult(weight);
+        
         totalSteer.add(steer);
       }
     }
@@ -103,11 +128,12 @@ class Agent {
 
   PVector avoidWalls(Room r) {
     PVector steer = new PVector(0,0);
-    float buffer = 15;
-    if (pos.y < buffer) steer.y = maxSpeed;
-    if (pos.y > height - buffer) steer.y = -maxSpeed;
-    if (pos.x > width - buffer) steer.x = -maxSpeed;
-    if (pos.x < buffer) {
+    float margin = 15;
+    if (pos.y < margin) steer.y = maxSpeed;
+    if (pos.y > height - margin) steer.y = -maxSpeed;
+    if (pos.x > width - margin) steer.x = -maxSpeed;
+    if (pos.x < margin) {
+      // Ne repousse pas si on est devant la porte
       if (pos.y < r.exitPos.y - r.doorHeight/2 || pos.y > r.exitPos.y + r.doorHeight/2) {
          steer.x = maxSpeed;
       }
