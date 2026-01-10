@@ -2,13 +2,18 @@
 class Agent {
   PVector pos, vel, acc;
   float r = 8.0; 
-  float maxSpeed = 2.5; // Vitesse légèrement réduite pour plus de réalisme
-  float maxForce = 0.15; // Moins de nervosité dans les virages
+  float maxSpeed = 2.5;
+  float maxForce = 0.15;
 
   Agent(float x, float y) {
     pos = new PVector(x, y);
     vel = new PVector(random(-1,1), random(-1,1));
     acc = new PVector(0, 0);
+  }
+
+  // Utilitaire pour les traces
+  PVector copyPos() {
+    return new PVector(pos.x, pos.y);
   }
 
   void run(ArrayList<Agent> agents, ArrayList<Obstacle> obstacles, Room room) {
@@ -17,7 +22,6 @@ class Agent {
     PVector forceObs = avoidObstacles(obstacles);
     PVector forceWall = avoidWalls(room);
     
-    // Équilibrage des forces : la sortie reste l'objectif principal
     forceExit.mult(1.0);
     forceSep.mult(2.0); 
     forceObs.mult(5.0); 
@@ -57,7 +61,6 @@ class Agent {
     return steer;
   }
 
-  // Séparation : les humains essaient de ne pas se rentrer dedans
   PVector separate(ArrayList<Agent> agents) {
     float desiredSeparation = r * 2.2;
     PVector sum = new PVector();
@@ -81,45 +84,32 @@ class Agent {
     return new PVector(0, 0);
   }
 
-  // --- LOGIQUE DE CONTOURNEMENT SANS REBOND ---
-PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
+  PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
     PVector totalSteer = new PVector(0,0);
-    
     for(Obstacle obs : obstacles) {
       PVector toObstacle = PVector.sub(obs.pos, pos);
       float d = toObstacle.mag();
       
-      // --- AJOUT : Vérification si l'obstacle est DERRIÈRE l'agent ---
-      // Si l'angle entre notre direction (vel) et l'obstacle est trop grand, 
-      // on l'ignore car on l'a déjà dépassé.
       if (vel.mag() > 0) {
         float angle = PVector.angleBetween(vel, toObstacle);
-        if (angle > PI/2) continue; // On ignore ce qui est derrière nous
+        if (angle > PI/2) continue; 
       }
 
       float obstacleRadius = obs.r;
       if (obs.type == 2) obstacleRadius = obs.r * 1.5; 
-      
       float buffer = 15; 
       
       if (d < obstacleRadius + r + buffer) {
-        // Calcul du vecteur perpendiculaire pour glisser
         PVector lateral = new PVector(-toObstacle.y, toObstacle.x);
-        
-        // On choisit le côté qui nous rapproche de la sortie (à gauche)
         PVector goal = new PVector(-1, 0); 
         if (PVector.angleBetween(lateral, goal) > PI/2) {
           lateral.mult(-1);
         }
-        
         lateral.setMag(maxSpeed);
         PVector steer = PVector.sub(lateral, vel);
         steer.limit(maxForce * 2);
-        
-        // Poids de la force basé sur la proximité
         float weight = map(d, obstacleRadius + r, obstacleRadius + r + buffer, 1.2, 0);
         steer.mult(weight);
-        
         totalSteer.add(steer);
       }
     }
@@ -133,7 +123,6 @@ PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
     if (pos.y > height - margin) steer.y = -maxSpeed;
     if (pos.x > width - margin) steer.x = -maxSpeed;
     if (pos.x < margin) {
-      // Ne repousse pas si on est devant la porte
       if (pos.y < r.exitPos.y - r.doorHeight/2 || pos.y > r.exitPos.y + r.doorHeight/2) {
          steer.x = maxSpeed;
       }
