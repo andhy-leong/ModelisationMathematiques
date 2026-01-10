@@ -2,6 +2,7 @@
 ArrayList<Agent> crowd;
 Room room;
 ArrayList<Obstacle> obstacles;
+PGraphics traces; // Calque pour les traces
 
 int startTime;
 int finalTime = 0;
@@ -10,17 +11,23 @@ int maxObstacles = 5;
 
 void setup() {
   size(800, 500);
-  // Sortie au milieu du mur de gauche
   room = new Room(new PVector(0, height/2), 60);
   obstacles = new ArrayList<Obstacle>();
   crowd = new ArrayList<Agent>();
+  
+  // Initialiser le calque de traces
+  traces = createGraphics(width, height);
+  traces.beginDraw();
+  traces.background(245, 0); // Transparent au début
+  traces.endDraw();
   
   resetSimulation();
 }
 
 void resetSimulation() {
   crowd.clear();
-  // Génération de 60 agents dans la zone de droite
+  // On ne vide pas les traces ici pour voir l'accumulation, 
+  // sauf si vous appuyez sur 'C'
   for (int i = 0; i < 60; i++) {
     crowd.add(new Agent(random(400, width-20), random(20, height-20)));
   }
@@ -32,57 +39,62 @@ void resetSimulation() {
 void draw() {
   background(245);
   
-  // --- Gestion du Chronomètre ---
-  int currentTime = 0;
-  if (!finished) {
-    currentTime = millis() - startTime;
-    if (crowd.isEmpty()) {
-      finished = true;
-      finalTime = currentTime;
-    }
-  } else {
-    currentTime = finalTime;
+  // 1. Afficher les traces en premier (sous les agents)
+  image(traces, 0, 0);
+  
+  // 2. Chronomètre
+  int currentTime = finished ? finalTime : millis() - startTime;
+  if (!finished && crowd.isEmpty()) {
+    finished = true;
+    finalTime = currentTime;
   }
 
-  // --- Interaction Obstacles ---
-  // Permet de déplacer le dernier obstacle ajouté avec la souris
+  // 3. Interaction
   if (mousePressed && obstacles.size() > 0) {
     obstacles.get(obstacles.size()-1).setPosition(mouseX, mouseY);
   }
   
-  // --- Affichage ---
+  // 4. Murs et Obstacles
   room.display();
   for (Obstacle obs : obstacles) {
     obs.display();
   }
   
-  // Mise à jour et affichage de la foule
+  // 5. Mise à jour des agents et dessin des traces
+  traces.beginDraw();
+  traces.stroke(0, 150, 255, 15); // Bleu très transparent
   for (int i = crowd.size()-1; i >= 0; i--) {
     Agent a = crowd.get(i);
+    
+    // On dessine une ligne entre l'ancienne et la nouvelle position
+    PVector prevPos = a.pos.copy();
     a.run(crowd, obstacles, room);
+    traces.line(prevPos.x, prevPos.y, a.pos.x, a.pos.y);
+    
     if (room.hasExited(a.pos)) {
       crowd.remove(i);
     }
   }
+  traces.endDraw();
   
-  // --- Interface Utilisateur ---
+  // 6. UI
   fill(0);
   textSize(14);
-  textAlign(LEFT);
   text("Temps: " + (currentTime / 1000.0) + " s", 10, 20);
-  text("Agents restants: " + crowd.size(), 10, 40);
-  text("Obstacles: " + obstacles.size() + "/" + maxObstacles, 10, 60);
-  
-  fill(100);
-  text("Touches: [0]Cercle [1]Carré [2]Rectangle [3]Triangle", 10, height - 40);
-  text("[R] Reset simulation | [C] Effacer obstacles", 10, height - 20);
+  text("Agents: " + crowd.size(), 10, 40);
+  text("Obstacles: " + obstacles.size() + "/5", 10, 60);
+  text("[R] Reset Agents | [C] Effacer Tout (Traces + Obs)", 10, height - 20);
 }
 
 void keyPressed() {
   if (key == 'r' || key == 'R') resetSimulation();
-  if (key == 'c' || key == 'C') obstacles.clear();
-  
-  // Ajout d'obstacles selon la touche pressée
+  if (key == 'c' || key == 'C') {
+    obstacles.clear();
+    traces.beginDraw();
+    traces.clear();
+    traces.endDraw();
+    resetSimulation();
+  }
   if (obstacles.size() < maxObstacles) {
     if (key == '0') obstacles.add(new Obstacle(mouseX, mouseY, 20, 0));
     if (key == '1') obstacles.add(new Obstacle(mouseX, mouseY, 20, 1));
