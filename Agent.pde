@@ -1,106 +1,140 @@
 class Agent {
-  PVector pos, vel, acc, lastPos;
+  PVector pos, vel, acc;
   float r = 8.0; 
-  float maxSpeed = 2.5;
-  float maxForce = 0.15;
-  int sidePreference = random(1) > 0.5 ? 1 : -1;
-  int stuckTimer = 0;
+  float maxSpeed = 3.0;
+  float maxForce = 0.25;
+  
+  boolean escaped = false; 
 
   Agent(float x, float y) {
     pos = new PVector(x, y);
-    vel = new PVector(random(-1,1), random(-1,1));
+    vel = new PVector(0,0);
     acc = new PVector(0, 0);
-    lastPos = pos.copy();
   }
 
-  void run(ArrayList<Agent> agents, ArrayList<Obstacle> obstacles, Room room) {
-    checkStuck();
-    PVector forceExit = seek(room.getClosestExit(pos));
-    PVector forceSep = separate(agents);
-    PVector forceObs = avoidObstacles(obstacles);
-    PVector forceWall = avoidWalls(room);
+  // On reçoit une liste "allObstacles" qui contient (Obstacles Utilisateur + Murs de la salle)
+  void run(ArrayList<Agent> agents, FlowField flow, ArrayList<Obstacle> allObstacles, Room room, PVector targetSafeZone) {
     
-    applyForce(forceExit.mult(1.2));
-    applyForce(forceSep.mult(2.5));
-    applyForce(forceObs.mult(6.0));
-    applyForce(forceWall.mult(5.0));
+    // --- 1. ETAT ---
+    // Vérification géométrique simple pour savoir si on est "dehors"
+    // (Juste pour savoir si on vise la sortie ou le point vert)
+    boolean insideRoomRect = (pos.x > room.x + r && pos.x < room.x + room.w - r && 
+                              pos.y > room.y + r && pos.y < room.y + room.h - r);
     
+    if (!insideRoomRect) escaped = true;
+
+    // --- 2. DIRECTION ---
+    if (!escaped) {
+      // DEDANS : FlowField
+      PVector desired = flow.lookup(pos);
+      desired.mult(maxSpeed);
+      PVector steer = PVector.sub(desired, vel);
+      steer.limit(maxForce);
+      applyForce(steer);
+    } else {
+      // DEHORS : Seek SafeZone
+      PVector seekForce = seek(targetSafeZone);
+      seekForce.mult(1.5); 
+      applyForce(seekForce);
+    }
+
+    PVector sep = separate(agents);
+    applyForce(sep.mult(3.0));
+
     update();
+    
+    // --- 3. PHYSIQUE (Collision Unique) ---
+    // On collisionne avec TOUT (Cubes noirs ET Murs de la salle)
+    resolveObstacles(allObstacles); 
+    
     display();
   }
 
-  void checkStuck() {
-    if (PVector.dist(pos, lastPos) < 0.2) stuckTimer++;
-    else stuckTimer = 0;
-    if (stuckTimer > 40) { sidePreference *= -1; stuckTimer = 0; }
-    lastPos = pos.copy();
-  }
-
   void applyForce(PVector force) { acc.add(force); }
-  void update() { vel.add(acc); vel.limit(maxSpeed); pos.add(vel); acc.mult(0); }
-  void display() { fill(255, 50, 50, 200); noStroke(); ellipse(pos.x, pos.y, r*2, r*2); }
 
-  PVector seek(PVector target) {
-    PVector d = PVector.sub(target, pos);
-    d.setMag(maxSpeed);
-    PVector s = PVector.sub(d, vel);
-    s.limit(maxForce);
-    return s;
+  void update() {
+    vel.add(acc);
+    vel.limit(maxSpeed);
+    pos.add(vel);
+    acc.mult(0);
   }
 
+  // Fonction universelle de collision (Murs et Objets)
+  void resolveObstacles(ArrayList<Obstacle> obstacles) {
+    for (Obstacle obs : obstacles) {
+      PVector closest = getClosestPointOnObstacle(pos, obs);
+      PVector normal = PVector.sub(pos, closest);
+      float dist = normal.mag();
+      
+      // Si on touche
+      if (dist < r) {
+        if (dist == 0) normal = PVector.random2D(); else normal.normalize();
+        
+        // 1. Repousser
+        pos.add(normal.copy().mult(r - dist));
+        
+        // 2. Glisser (Friction nulle)
+        float vDot = PVector.dot(vel, normal);
+        if (vDot < 0) vel.sub(normal.copy().mult(vDot));
+      }
+    }
+  }
+
+  // Gestion parfaite de la rotation et des rectangles (utilisée aussi pour les murs)
+  PVector getClosestPointOnObstacle(PVector p, Obstacle obs) {
+    if (obs.type == 0) { // Cercle
+      PVector dir = PVector.sub(p, obs.pos).normalize().mult(obs.r);
+      return PVector.add(obs.pos, dir);
+    }
+    
+    // Rectangle (Tourné ou non)
+    PVector relative = PVector.sub(p, obs.pos);
+    float cosA = cos(-obs.angle); float sinA = sin(-obs.angle);
+    float localX = relative.x * cosA - relative.y * sinA;
+    float localY = relative.x * sinA + relative.y * cosA;
+    
+    // obs.r est demi-largeur, obs.h est demi-hauteur
+    float cX = constrain(localX, -obs.r, obs.r);
+    float cY = constrain(localY, -obs.h, obs.h);
+    
+    float cosB = cos(obs.angle); float sinB = sin(obs.angle);
+    float finalX = cX * cosB - cY * sinB;
+    float finalY = cX * sinB + cY * cosB;
+    
+    return PVector.add(obs.pos, new PVector(finalX, finalY));
+  }
+  
+  PVector seek(PVector target) {
+    PVector desired = PVector.sub(target, pos);
+    float d = desired.mag();
+    desired.normalize();
+    if (d < 50) desired.mult(map(d, 0, 50, 0, maxSpeed));
+    else desired.mult(maxSpeed);
+    PVector steer = PVector.sub(desired, vel);
+    steer.limit(maxForce);
+    return steer;
+  }
+  
   PVector separate(ArrayList<Agent> agents) {
-    float dS = r * 2.0;
+    float desiredSeparation = r * 2.2;
     PVector sum = new PVector();
     int count = 0;
     for (Agent other : agents) {
       float d = PVector.dist(pos, other.pos);
-      if ((d > 0) && (d < dS)) {
-        PVector p = PVector.sub(pos, other.pos);
-        p.setMag((dS - d) / 2);
-        pos.add(p); 
-        sum.add(PVector.sub(pos, other.pos).normalize().div(d));
-        count++;
+      if ((d > 0) && (d < desiredSeparation)) {
+        PVector diff = PVector.sub(pos, other.pos).normalize().div(d);
+        sum.add(diff); count++;
       }
     }
     if (count > 0) {
       sum.setMag(maxSpeed);
-      PVector s = PVector.sub(sum, vel);
-      s.limit(maxForce);
-      return s;
+      return PVector.sub(sum, vel).limit(maxForce);
     }
-    return new PVector(0, 0);
+    return new PVector(0,0);
   }
 
-  PVector avoidObstacles(ArrayList<Obstacle> obstacles) {
-    PVector tS = new PVector(0,0);
-    for(Obstacle obs : obstacles) {
-      PVector toO = PVector.sub(obs.pos, pos);
-      float d = toO.mag();
-      float mD = obs.r + r;
-      if (d < mD + 20) {
-        PVector lat = new PVector(-toO.y, toO.x).mult(sidePreference);
-        lat.setMag(maxSpeed);
-        PVector s = PVector.sub(lat, vel);
-        s.limit(maxForce * 3);
-        if (d < mD) {
-           PVector p = PVector.sub(pos, obs.pos);
-           p.setMag(mD); pos = PVector.add(obs.pos, p);
-        }
-        tS.add(s);
-      }
-    }
-    return tS;
-  }
-
-  PVector avoidWalls(Room room) {
-    PVector s = new PVector(0,0);
-    float m = this.r + 2; 
-    if (pos.y < m) { pos.y = m; s.add(new PVector(0, maxSpeed).sub(vel)); }
-    else if (pos.y > height - m) { pos.y = height - m; s.add(new PVector(0, -maxSpeed).sub(vel)); }
-    if (pos.x > width - m) { pos.x = width - m; s.add(new PVector(-maxSpeed, 0).sub(vel)); }
-    else if (pos.x < m && !room.isNearExit(pos)) {
-        pos.x = m; s.add(new PVector(maxSpeed, 0).sub(vel));
-    }
-    return s.limit(maxForce * 3);
+  void display() { 
+    if (escaped) fill(0, 100, 0); else fill(255, 50, 50); 
+    noStroke(); ellipse(pos.x, pos.y, r*2, r*2);
   }
 }
