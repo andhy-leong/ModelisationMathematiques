@@ -19,18 +19,22 @@ boolean isStarted = false;
 boolean debug = false;
 int maxObstacles = 100;
 
+float xExit = 200;
+float yExit = 400;
+
+
 void setup() {
   size(1200, 800);
   // Pièce centrée
   room = new Room(200, 150, 800, 500, 60); 
-  room.addExit(200, 400); 
+  room.addExit(xExit, yExit); 
   
   safeZones = new ArrayList<PVector>();
   safeZones.add(new PVector(100, 400));
   
   obstacles = new ArrayList<Obstacle>();
-  obstacles.add(new Obstacle(600, 400, 20, 2)); 
-  
+  obstacles.add(new Obstacle(xExit, float(args[0]) + yExit, float(args[1]), 2)); 
+
   flowField = new FlowField();
   updateSimulation(); // Fonction centrale de mise à jour
   

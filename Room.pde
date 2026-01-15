@@ -4,7 +4,6 @@ class Room {
   float doorHeight;
   
   float x, y, w, h;
-  // MODIFICATION : 15px est un bon équilibre (ni trop fin, ni trop gros)
   float wallThickness = 15; 
 
   Room(float x, float y, float w, float h, float doorH) {

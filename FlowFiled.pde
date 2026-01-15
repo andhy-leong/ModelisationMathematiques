@@ -23,7 +23,6 @@ class FlowField {
 
   void generate(ArrayList<Obstacle> obstacles, Room room) {
     // --- 1. DIJKSTRA (Calcul des distances) ---
-    // (Inchangé)
     
     for (int i=0; i<cols; i++) {
       for (int j=0; j<rows; j++) distMap[i][j] = 99999;
@@ -62,17 +61,11 @@ class FlowField {
       }
     }
 
-    // --- 2. CALCUL DES VECTEURS (Correction "Collage") ---
+    // --- 2. CALCUL DES VECTEURS ---
     
     for (int i = 0; i < cols; i++) {
       for (int j = 0; j < rows; j++) {
         int currentDist = distMap[i][j];
-        
-        // CORRECTION IMPORTANTE :
-        // J'ai supprimé le "if (currentDist >= 90000) continue;"
-        // Maintenant, on calcule le vecteur MÊME si c'est un mur.
-        // Si c'est un mur (99999), ses voisins seront de l'air (ex: 100).
-        // Le gradient sera énorme vers l'air, ce qui éjectera l'agent du mur.
 
         boolean nearWall = isNearWall(i, j, obstacles);
 
