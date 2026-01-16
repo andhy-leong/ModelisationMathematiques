@@ -1,3 +1,7 @@
+import java.io.FileWriter;
+import java.io.PrintWriter;
+import java.io.File;
+
 ArrayList<Agent> crowd;
 Room room;
 ArrayList<Obstacle> obstacles; // Obstacles utilisateur
@@ -71,6 +75,42 @@ void resetSimulation() {
   finalTime = 0;
 }
 
+void appendResultsCSV() {
+  if (obstacles.isEmpty() || room.exits.isEmpty()) return;
+
+  Obstacle obs = obstacles.get(0);
+  PVector exit = room.exits.get(0);
+
+  float distance = dist(obs.pos.x, obs.pos.y, exit.x, exit.y);
+  float taille = obs.r;
+  float tempsSortie = finalTime / 1000.0;
+
+  String fileName = sketchPath("results.csv");
+  File file = new File(fileName);
+  boolean writeHeader = !file.exists();
+
+  try {
+    PrintWriter out = new PrintWriter(new FileWriter(file, true));
+
+    if (writeHeader) {
+      out.println("distance;taille;temps_sortie");
+    }
+
+    out.println(
+      nf(distance, 0, 3) + ";" +
+      nf(taille, 0, 3) + ";" +
+      nf(tempsSortie, 0, 3)
+    );
+
+    out.flush();
+    out.close();
+
+  } catch (Exception e) {
+    e.printStackTrace();
+  }
+}
+
+
 void draw() {
   background(245);
   image(traces, 0, 0);
@@ -112,6 +152,14 @@ void draw() {
       a.display();
     }
   }
+  
+  if (!finished && isStarted && allOut) {
+    finished = true;
+    finalTime = millis() - startTime;
+    appendResultsCSV();
+  }
+
+  
   traces.endDraw();
   
   fill(0); textSize(14); textAlign(LEFT);
